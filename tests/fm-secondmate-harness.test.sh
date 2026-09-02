@@ -93,6 +93,7 @@ crew set, secondmate absent -> crew (backward-compat)^codex^-^codex^codex
 crew set, secondmate set -> secondmate wins, crew untouched^codex^grok^grok^codex
 crew absent, secondmate set -> secondmate value, crew own^-^grok^grok^claude
 signed Pi wrapper remains a distinct secondmate value^codex^pi-signed^pi-signed^codex
+OMP is a distinct secondmate harness^omp^omp^omp^omp
 secondmate=default defers to crew^codex^default^codex^codex
 crew=default resolves to own, secondmate follows^default^-^claude^claude
 secondmate=default with crew absent -> own^-^default^claude^claude
@@ -151,6 +152,7 @@ absent file -> own harness, empty model/effort^ABSENT^claude^^
 bare harness only -> empty model/effort (backward-compat)^claude^claude^^
 harness + model -> model only^claude opus^claude^opus^
 harness + model + effort -> both^claude opus high^claude^opus^high
+OMP preserves model and max effort tokens^omp openai-codex/gpt-5.6-sol max^omp^openai-codex/gpt-5.6-sol^max
 signed Pi wrapper + model + effort preserves every token^pi-signed openai-codex/gpt-5.6-sol max^pi-signed^openai-codex/gpt-5.6-sol^max
 default harness token -> falls back to crew, empty model/effort^default^claude^^
 extra whitespace between tokens is tolerated^grok   grok-4    xhigh^grok^grok-4^xhigh
@@ -661,6 +663,7 @@ exit 0
 SH
   chmod +x "$fakebin/tmux"
   fm_fake_exit0 "$fakebin" pi
+  fm_fake_exit0 "$fakebin" omp
   printf '%s\n' "$fakebin"
 }
 
@@ -747,6 +750,34 @@ test_spawn_bare_harness_no_model_effort_flag() {
   assert_not_contains "$launch" "--model" "bare-tokens: launch must not carry a --model flag"
   assert_not_contains "$launch" "--effort" "bare-tokens: launch must not carry an --effort flag"
   pass "C2 spawn: a bare harness-only secondmate-harness file launches with no model/effort flag (backward-compat)"
+}
+
+test_spawn_omp_secondmate_uses_omp_contract() {
+  local w sm meta launchlog launch out status
+  w="$TMP_ROOT/spawn-omp-contract"
+  sm="$w/sm"
+  launchlog="$w/launch.log"
+  mkdir -p "$w/home/config"
+  printf 'omp openai-codex/gpt-5.6-sol max\n' > "$w/home/config/secondmate-harness"
+  make_seeded_home "$sm" sm
+
+  out=$(spawn_secondmate_capture "$w" sm "$sm" "$launchlog" 2>&1); status=$?
+  expect_code 0 "$status" "OMP secondmate spawn should succeed"$'\n'"$out"
+  meta="$w/home/state/sm.meta"
+  [ "$(meta_field "$meta" harness)" = omp ] || fail "OMP secondmate meta harness is not omp"
+  [ "$(meta_field "$meta" model)" = openai-codex/gpt-5.6-sol ] || fail "OMP secondmate meta model is wrong"
+  [ "$(meta_field "$meta" effort)" = max ] || fail "OMP secondmate meta effort is wrong"
+  launch=$(cat "$launchlog")
+  assert_contains "$launch" "FM_OMP_HARNESS=omp" "OMP secondmate launch omitted its identity marker"
+  assert_contains "$launch" "--approval-mode yolo" "OMP secondmate launch omitted autonomous approval mode"
+  assert_contains "$launch" "--model 'openai-codex/gpt-5.6-sol' --thinking 'max'" \
+    "OMP secondmate launch omitted model/thinking flags"
+  assert_contains "$launch" ".omp/extensions/fm-primary-turnend-guard.ts" \
+    "OMP secondmate launch omitted the turn-end wrapper"
+  assert_contains "$launch" ".omp/extensions/fm-primary-pi-watch.ts" \
+    "OMP secondmate launch omitted the watcher wrapper"
+  assert_not_contains "$launch" "--tui-mode" "OMP secondmate launch must not pass --tui-mode"
+  pass "OMP secondmate launch uses its marker, autonomous flags, model/thinking, and native wrappers"
 }
 
 # "<harness> <model>" durably threads --model into the secondmate launch and
@@ -2562,6 +2593,7 @@ test_spawn_cursor_secondmate_launches_with_its_primary_contract
 test_spawn_backend_precedence_over_inherited_config
 test_spawn_explicit_backend_precedence_over_env_and_inherited_config
 test_spawn_bare_harness_no_model_effort_flag
+test_spawn_omp_secondmate_uses_omp_contract
 test_spawn_secondmate_harness_model_token
 test_spawn_secondmate_harness_model_and_effort_tokens
 test_spawn_explicit_model_overrides_secondmate_harness_token

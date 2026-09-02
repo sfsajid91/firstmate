@@ -87,6 +87,7 @@ export function calmPresentationHides(itemClass: CalmTranscriptClass): boolean {
 }
 
 export function registerFirstmateSyntheticPresentation(pi: ExtensionAPI): void {
+  if (typeof pi.registerEntryRenderer !== "function") return;
   pi.registerEntryRenderer<FirstmateSyntheticPresentation>(
     FIRSTMATE_SYNTHETIC_PRESENTATION_TYPE,
     (entry) => {

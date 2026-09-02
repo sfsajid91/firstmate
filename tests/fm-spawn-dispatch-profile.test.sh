@@ -49,6 +49,7 @@ SH
   chmod +x "$fakebin/timeout" "$fakebin/cursor-agent"
   make_spawn_pi_probe "$fakebin" pi
   make_spawn_pi_probe "$fakebin" pi-signed
+  make_spawn_pi_probe "$fakebin" omp
   printf '%s\n' "$fakebin"
 }
 
@@ -706,6 +707,72 @@ test_pi_signed_persistent_secondmate_uses_pi_extensions_and_identity() {
   pass "pi-signed is a distinct persistent secondmate runtime with shared Pi supervision semantics"
 }
 
+test_omp_threads_model_and_max_effort() {
+  local rec id out status launch
+  id=profile-omp-z8
+  rec=$(make_spawn_case profile-omp omp "$id")
+  read_case_record "$rec"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+    --model openai-codex/gpt-5.6-sol --effort max)
+  status=$?
+  expect_code 0 "$status" "omp spawn with max effort should succeed"
+  assert_meta_profile "$HOME_DIR/state/$id.meta" omp openai-codex/gpt-5.6-sol max
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "FM_OMP_HARNESS=omp '$FAKEBIN_DIR/omp' --approval-mode yolo --model 'openai-codex/gpt-5.6-sol' --thinking 'max' -e" \
+    "omp launch did not pass --approval-mode yolo while threading the requested model and max thinking level"
+  assert_not_contains "$launch" "--tui-mode" \
+    "omp launch must not pass unsupported --tui-mode"
+  assert_contains "$launch" "fm-operational-input.sh' encode launch-brief" \
+    "omp launch lost the canonical typed launch-brief envelope"
+  pass "omp receives --model, --thinking max, and --approval-mode yolo without --tui-mode"
+}
+
+test_omp_missing_binary_refuses_before_endpoint_or_metadata() {
+  local rec id out status
+  id=profile-omp-missing-z8c
+  rec=$(make_spawn_case profile-omp-missing omp "$id")
+  read_case_record "$rec"
+  rm -f "$FAKEBIN_DIR/omp"
+  : > "$LAUNCH_LOG"
+  out=$(FM_ROOT_OVERRIDE='' FM_HOME="$HOME_DIR" \
+    FM_STATE_OVERRIDE="$HOME_DIR/state" FM_DATA_OVERRIDE="$HOME_DIR/data" \
+    FM_PROJECTS_OVERRIDE="$HOME_DIR/projects" FM_CONFIG_OVERRIDE="$HOME_DIR/config" \
+    FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$WT_DIR" TMUX="fake,1,0" \
+    FM_FAKE_LAUNCH_LOG="$LAUNCH_LOG" PATH="$FAKEBIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin" \
+    "$SPAWN" "$id" "$PROJ_DIR" --mode no-mistakes --yolo off 2>&1)
+  status=$?
+  expect_code 1 "$status" "a missing omp executable should refuse the spawn"
+  assert_contains "$out" "omp executable not found on PATH" \
+    "missing omp refusal did not name the actionable requirement"
+  assert_absent "$HOME_DIR/state/$id.meta" "missing omp refusal wrote task metadata"
+  [ ! -s "$LAUNCH_LOG" ] || fail "missing omp refusal typed a launch command"
+  pass "omp refuses safely and actionably when the selected executable is unavailable"
+}
+
+test_omp_persistent_secondmate_uses_omp_extensions_and_identity() {
+  local rec id sm out status launch
+  id=profile-omp-secondmate-z8d
+  rec=$(make_spawn_case profile-omp-secondmate codex "$id")
+  read_case_record "$rec"
+  printf '%s\n' omp > "$HOME_DIR/config/secondmate-harness"
+  sm="$CASE_DIR/secondmate-home"
+  make_seeded_secondmate_home "$sm" "$id"
+  mkdir -p "$sm/.omp/extensions"
+  touch "$sm/.omp/extensions/fm-primary-turnend-guard.ts" "$sm/.omp/extensions/fm-primary-pi-watch.ts"
+  sm=$(cd "$sm" && pwd -P)
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$sm" --secondmate)
+  status=$?
+  expect_code 0 "$status" "omp persistent secondmate spawn should succeed"
+  assert_contains "$out" "spawned $id harness=omp kind=secondmate" \
+    "omp secondmate spawn did not preserve its runtime identity"
+  assert_meta_profile "$HOME_DIR/state/$id.meta" omp default default
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "FM_OMP_HARNESS=omp '$FAKEBIN_DIR/omp' --approval-mode yolo -e '$sm/.omp/extensions/fm-primary-turnend-guard.ts' -e '$sm/.omp/extensions/fm-primary-pi-watch.ts'" \
+    "omp secondmate did not pass --approval-mode yolo with OMP's primary extension launch shape"
+  pass "omp is a distinct persistent secondmate runtime with OMP primary extensions"
+}
+
 test_batch_forwards_shared_profile_flags() {
   local rec id1 id2 out status
   id1=profile-batch-a-z9
@@ -818,6 +885,9 @@ test_pi_tui_mode_probe_is_safe_for_old_and_new_pi
 test_pi_signed_threads_shared_pi_profile_and_preserves_identity
 test_pi_signed_missing_binary_refuses_before_endpoint_or_metadata
 test_pi_signed_persistent_secondmate_uses_pi_extensions_and_identity
+test_omp_threads_model_and_max_effort
+test_omp_missing_binary_refuses_before_endpoint_or_metadata
+test_omp_persistent_secondmate_uses_omp_extensions_and_identity
 test_batch_forwards_shared_profile_flags
 test_claude_forwards_firstmate_config_dir_when_set
 test_claude_omits_config_dir_prefix_when_unset

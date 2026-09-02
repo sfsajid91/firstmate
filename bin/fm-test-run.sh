@@ -1157,6 +1157,10 @@ families_for_changed_path() {
       printf '%s\n' session-bootstrap
       printf '%s\n' live-harness-optin
       ;;
+    .pi/extensions/*|.omp/extensions/*)
+      printf '%s\n' session-bootstrap
+      printf '%s\n' live-harness-optin
+      ;;
     bin/fm-extension.mjs|bin/fm-extension.sh|docs/examples/process-event-extension/*)
       printf '%s\n' __script__:fm-extension-binding.test.sh
       ;;

@@ -6,11 +6,12 @@
 // real tools and reports through the fm_branch_report custom tool, which
 // writes the durable outcome store FIRST (bin/fm-branch-outcome.sh) and then
 // merges an append-only note to main's tail. Main's captain/assistant dialog
-// is mirrored into the branch as read-only fm-main-mirror context from Pi's
-// before_agent_start prompt and at main's turn_end. Pi-only by construction: this
-// file lives in .pi/extensions, so no
-// other harness ever loads it. Supervision is default-on for every task once
-// this Pi session owns the fleet lock: no captain grant file is required.
+// is mirrored into the branch as read-only fm-main-mirror context from the
+// main session's before_agent_start prompt and at main's turn_end. Pi-family
+// by construction: this file lives in .pi/extensions and is re-exported by
+// the OMP adapter, so no unrelated harness ever loads it.
+// Supervision is default-on for every task once
+// this session owns the fleet lock: no captain grant file is required.
 // Away mode (or a broken branch) keeps today's wake-to-main behavior
 // untouched regardless.
 //
@@ -59,22 +60,59 @@ import { fileURLToPath } from "node:url";
 // Pi exposes pi-ai to extensions as a first-class module in both its Node
 // and compiled-binary loaders, the same standing as pi-tui and typebox
 // below, and aliases this root specifier to its compat entrypoint.
-import { clampThinkingLevel, getSupportedThinkingLevels } from "@earendil-works/pi-ai";
-import {
+import * as PiAi from "@earendil-works/pi-ai";
+const clampThinkingLevel = PiAi.clampThinkingLevel;
+const getSupportedThinkingLevels =
+  PiAi.getSupportedThinkingLevels ??
+  ((_model?: unknown): string[] => ["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+import * as PiCodingAgent from "@earendil-works/pi-coding-agent";
+const {
   createAgentSession,
   createBashToolDefinition,
   DefaultResourceLoader,
   DynamicBorder,
   getAgentDir,
   keyHint,
-  ModelRuntime,
   SessionManager,
   ToolExecutionComponent,
-  type AgentSession,
-  type ExtensionAPI,
-  type ExtensionCommandContext,
-  type ToolDefinition,
-} from "@earendil-works/pi-coding-agent";
+} = PiCodingAgent;
+type AgentSession = PiCodingAgent.AgentSession;
+type ExtensionAPI = PiCodingAgent.ExtensionAPI;
+type ExtensionCommandContext = PiCodingAgent.ExtensionCommandContext;
+type ToolDefinition = PiCodingAgent.ToolDefinition;
+
+type ModelRuntime = {
+  getModel(provider: string, modelId: string): unknown;
+  hasConfiguredAuth(provider: string): boolean;
+};
+
+function isModelRuntime(value: unknown): value is ModelRuntime {
+  if (!value || typeof value !== "object") return false;
+  return (
+    "getModel" in value &&
+    typeof value.getModel === "function" &&
+    "hasConfiguredAuth" in value &&
+    typeof value.hasConfiguredAuth === "function"
+  );
+}
+
+function modelRuntimeFactory(): (() => Promise<ModelRuntime>) | undefined {
+  const runtimeExport = Reflect.get(PiCodingAgent, "ModelRuntime");
+  if (
+    !runtimeExport ||
+    (typeof runtimeExport !== "object" && typeof runtimeExport !== "function")
+  ) {
+    return undefined;
+  }
+  if (!("create" in runtimeExport) || typeof runtimeExport.create !== "function") return undefined;
+  return async () => {
+    const runtime = await runtimeExport.create();
+    if (!isModelRuntime(runtime)) {
+      throw new Error("ModelRuntime.create() returned an unsupported runtime");
+    }
+    return runtime;
+  };
+}
 import { Box, Container, fuzzyFilter, Input, SelectList, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import {
@@ -456,7 +494,14 @@ export default function (pi: ExtensionAPI) {
   // installed, converted, derived, or overwritten here.
   async function resolveBranchModel(provider: string, modelId: string): Promise<BranchModelResolution> {
     const label = `${provider}/${modelId}`;
-    const modelRuntime = await ModelRuntime.create();
+    const createRuntime = modelRuntimeFactory();
+    if (!createRuntime) {
+      return {
+        ok: false,
+        reason: `${label} cannot be selected because this harness does not expose ModelRuntime`,
+      };
+    }
+    const modelRuntime = await createRuntime();
     const model = modelRuntime.getModel(provider, modelId) as BranchModel | undefined;
     if (!model) return { ok: false, reason: `${label} is unavailable to the isolated branch runtime` };
     if (!modelRuntime.hasConfiguredAuth(provider)) {
@@ -1142,7 +1187,9 @@ ${context.command}
       const followMain = `Follow main${ctx.model ? ` (${modelLabel(ctx.model)})` : ""}`;
       let available: string[];
       try {
-        const modelRuntime = await ModelRuntime.create();
+        const createRuntime = modelRuntimeFactory();
+        if (!createRuntime) throw new Error("this harness does not expose ModelRuntime");
+        const modelRuntime = await createRuntime();
         available = ctx.modelRegistry
           .getAvailable()
           .filter((model) => modelRuntime.getModel(model.provider, model.id) && modelRuntime.hasConfiguredAuth(model.provider))

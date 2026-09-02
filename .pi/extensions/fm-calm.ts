@@ -150,9 +150,9 @@ export default function (pi: ExtensionAPI) {
           ? (tui) => createCalmWorkingShipWidget(tui, workingShipAnimation)
           : undefined,
       );
-      ui.setWorkingVisible(!showShip);
+      ui.setWorkingVisible?.(!showShip);
     } else if (forceStockVisibility && !showShip) {
-      ui.setWorkingVisible(true);
+      ui.setWorkingVisible?.(true);
     }
   };
 
@@ -231,7 +231,7 @@ export default function (pi: ExtensionAPI) {
     const standardShells = new WeakMap<object, StandardShellState>();
 
     if (!originalRenderCall || !originalRenderResult) {
-      throw new Error(`Firstmate calm mode requires both render slots for Pi built-in tool ${original.name}`);
+      return original;
     }
 
     const shellStateFor = (
@@ -420,7 +420,7 @@ export default function (pi: ExtensionAPI) {
     // A genuine new session lifetime starts the boat at the normal initial position.
     workingShipAnimation.reset();
     applyWorkingPresentation(ctx.ui, true);
-    ctx.ui.setHiddenThinkingLabel(calmPresentationIsActive() ? "" : undefined);
+    ctx.ui.setHiddenThinkingLabel?.(calmPresentationIsActive() ? "" : undefined);
     ctx.ui.setStatus("firstmate-calm", undefined);
     removeTerminalInputHandler?.();
     removeTerminalInputHandler = ctx.ui.onTerminalInput((data) => {
@@ -485,12 +485,14 @@ export default function (pi: ExtensionAPI) {
       applyWorkingPresentation(ctx.ui, true);
       // Pi re-runs every assistant row's layout from this call even when the label is
       // unchanged, which is what makes a toggle apply to rows already on screen.
-      ctx.ui.setHiddenThinkingLabel(active ? "" : undefined);
+      ctx.ui.setHiddenThinkingLabel?.(active ? "" : undefined);
       ctx.ui.setStatus("firstmate-calm", undefined);
 
-      const expanded = ctx.ui.getToolsExpanded();
-      ctx.ui.setToolsExpanded(!expanded);
-      ctx.ui.setToolsExpanded(expanded);
+      const expanded = ctx.ui.getToolsExpanded?.();
+      if (expanded !== undefined) {
+        ctx.ui.setToolsExpanded(!expanded);
+        ctx.ui.setToolsExpanded(expanded);
+      }
     },
   });
 }

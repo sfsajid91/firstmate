@@ -27,4 +27,6 @@ jq -r '.operations[][][], .harnesses[]' "$ROUTING_JSON" | sort -u | while IFS= r
   [ -r "$ROOT/.agents/skills/harness-adapters/$path" ] \
     || fail "harness adapter routing target is unreadable: $path"
 done
-pass "harness adapter routing artifact is normalized and every target is readable"
+jq -e '.harnesses.omp == "references/harness/omp.md"' "$ROUTING_JSON" >/dev/null \
+  || fail "OMP is missing from the verified harness adapter routing map"
+pass "harness adapter routing artifact is normalized, readable, and includes OMP"

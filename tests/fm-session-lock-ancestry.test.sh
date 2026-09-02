@@ -86,6 +86,43 @@ SH
   done
   pass "session-lock: a version-named Claude Code session is identified from its install path and argv[0]"
 }
+test_omp_named_session_is_identified() {
+  local dir fakebin
+  dir="$TMP_ROOT/omp-named"
+  fakebin=$(fm_fakebin "$dir")
+  mkdir -p "$dir/state"
+  cat > "$fakebin/ps" <<'SH'
+#!/usr/bin/env bash
+set -u
+field= pid=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) field=$2; shift 2 ;;
+    -p) pid=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+case "$pid:$field" in
+  730:comm=) printf '%s\n' omp ;;
+  730:args=) printf '%s\n' '/usr/local/bin/omp --approval-mode yolo' ;;
+  730:ppid=) printf '%s\n' 1 ;;
+  *:comm=) printf '%s\n' bash ;;
+  *:args=) printf '%s\n' bash ;;
+  *:ppid=) printf '%s\n' 730 ;;
+esac
+SH
+  chmod +x "$fakebin/ps"
+  printf '730\n' > "$dir/state/.lock"
+  got=$(lib_eval "$fakebin" 'fm_harness_ancestry_pid') \
+    || fail "an OMP session was not found in the ancestry"
+  [ "$got" = 730 ] || fail "OMP ancestry resolved '$got', expected session pid 730"
+  lib_eval "$fakebin" 'fm_harness_pid_alive 730' \
+    || fail "a live OMP session was not recognized as a harness"
+  lib_eval "$fakebin" "fm_session_lock_owned_by_self '$dir/state'" \
+    || fail "the OMP session holding the lock did not recognize itself as owner"
+  pass "session-lock: an OMP session is identified by its exact process name"
+}
+
 
 test_ordinary_paths_are_never_harness_processes() {
   local dir fakebin shape
@@ -357,6 +394,7 @@ test_e2e_daemon_parented_version_named_session_keeps_its_lock() {
 }
 
 test_version_named_session_is_identified_on_both_platforms
+test_omp_named_session_is_identified
 test_ordinary_paths_are_never_harness_processes
 test_harness_beyond_a_gap_never_owns_the_lock
 test_competing_version_named_session_is_seen_as_live

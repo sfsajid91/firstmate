@@ -348,7 +348,7 @@ test_proven_box_bottom_border_cursor_classifies_content() {
 }
 
 test_pi_identity_requires_readable_busy_state() (
-  local out
+  local out harness
   # Keep the mocks in this subshell so they cannot affect later tests. Defining
   # functions directly inside a command substitution does not parse in Bash 3.2.
   # shellcheck disable=SC2329 # Mock invoked indirectly by the sourced adapter.
@@ -357,17 +357,19 @@ test_pi_identity_requires_readable_busy_state() (
     for arg in "$@"; do
       case "$arg" in
         *pane_tty*) printf '\n'; return 0 ;;
-        *pane_current_command*) printf 'pi\n'; return 0 ;;
+        *pane_current_command*) printf '%s\n' "${FM_TEST_HARNESS:-pi}"; return 0 ;;
       esac
     done
     return 1
   }
   # shellcheck disable=SC2329 # Mock invoked indirectly by the sourced adapter.
   fm_pane_busy_state() { printf 'unknown'; }
-  if out=$(fm_tmux_composer_identity fakepane); then
-    fail "a live Pi process with unreadable busy state must not produce identity, got '$out'"
-  fi
-  pass "fm_tmux_composer_identity: unknown busy state cannot become idle identity"
+  for harness in pi omp; do
+    if out=$(FM_TEST_HARNESS="$harness" fm_tmux_composer_identity fakepane); then
+      fail "a live $harness process with unreadable busy state must not produce identity, got '$out'"
+    fi
+  done
+  pass "fm_tmux_composer_identity: unknown busy state cannot become idle Pi-family identity"
 )
 
 test_bordered_busy_signatures_are_pending() {
@@ -382,6 +384,13 @@ test_bordered_busy_signatures_are_pending() {
     [ "$out" = pending ] \
       || fail "typed bordered busy signature '$signature' should be pending, got '$out'"
   done
+  printf 'Working...\n' | fm_busy_lines_match omp \
+    || fail "OMP's Working... footer must be a delivery busy signature"
+  printf 'Working…\n' | fm_busy_lines_match omp \
+    || fail "OMP's ellipsis Working footer must be a delivery busy signature"
+  if printf 'Ctrl+c:cancel\n' | fm_busy_lines_match omp; then
+    fail "OMP must not borrow Grok's Ctrl+c:cancel delivery signature"
+  fi
   pass "fm_tmux_composer_state: typed Pi and Grok busy signatures inside a box are pending"
 }
 
@@ -535,12 +544,12 @@ test_all_tmux_harness_composers_share_classification() {
   dir="$TMP_ROOT/all-harness-composers"; mkdir -p "$dir"
   fb=$(make_fake_tmux "$dir")
   capture="$dir/styled.txt"
-  for harness in claude codex opencode pi pi-signed grok; do
+  for harness in claude codex opencode pi pi-signed omp grok; do
     case "$harness" in
       claude) printf '╭────────────╮\n│ ❯ \033[2mtry\033[0m      │\n╰────────────╯\n' > "$capture" ;;
       codex) printf '╭────────────╮\n│ › \033[2mtip\033[0m      │\n╰────────────╯\n' > "$capture" ;;
       opencode) printf '╭────────────╮\n│ >          │\n╰────────────╯\n' > "$capture" ;;
-      pi|pi-signed) printf '╭────────────╮\n│            │\n╰────────────╯\n' > "$capture" ;;
+      pi|pi-signed|omp) printf '╭────────────╮\n│            │\n╰────────────╯\n' > "$capture" ;;
       grok) printf '╭────────────╮\n│ ❯ \033[38;2;50;47;70mType\033[0m     │\n╰────────────╯\n' > "$capture" ;;
     esac
     out=$(PATH="$fb:$PATH" FM_FAKE_STYLED="$capture" FM_FAKE_CY=1 \
@@ -550,7 +559,7 @@ test_all_tmux_harness_composers_share_classification() {
     case "$harness" in
       claude|grok) printf '╭────────────╮\n│ ❯ fix      │\n╰────────────╯\n' > "$capture" ;;
       codex) printf '╭────────────╮\n│ › fix      │\n╰────────────╯\n' > "$capture" ;;
-      opencode|pi|pi-signed) printf '╭────────────╮\n│ > fix      │\n╰────────────╯\n' > "$capture" ;;
+      opencode|pi|pi-signed|omp) printf '╭────────────╮\n│ > fix      │\n╰────────────╯\n' > "$capture" ;;
     esac
     out=$(PATH="$fb:$PATH" FM_FAKE_STYLED="$capture" FM_FAKE_CY=1 \
       fm_tmux_composer_state "fakepane")

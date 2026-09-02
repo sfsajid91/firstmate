@@ -178,6 +178,29 @@ test_pi_snippet_uses_effective_extension_path() {
   pass "pi supervision snippet renders the effective extension path"
 }
 
+test_omp_snippet_uses_native_extensions_and_recovery_protocol() {
+  local out ordinary home turnend watch
+  home="$TMP_ROOT/omp-home"
+  turnend="$ROOT/.omp/extensions/fm-primary-turnend-guard.ts"
+  watch="$ROOT/.omp/extensions/fm-primary-pi-watch.ts"
+  mkdir -p "$home/state" "$home/config"
+  out=$(FM_HOME="$home" "$RENDER" --harness omp)
+  assert_contains "$out" "Mode: OMP extension background wake." "omp snippet missing extension mode"
+  assert_contains "$out" "-e $turnend -e $watch" "omp snippet did not render native wrapper paths"
+  ordinary=$(printf '%s\n' "$out" | grep -F -- '- Ordinary wake:')
+  assert_contains "$ordinary" "OMP extension already owns watcher continuity" \
+    "omp ordinary-wake line does not leave continuity to the extension"
+  assert_not_contains "$ordinary" "fm_watch_arm_pi" \
+    "omp ordinary-wake line incorrectly calls the recovery tool"
+  out=$(FM_HOME="$home" "$RENDER" --harness omp --repair-line)
+  assert_contains "$out" "restart OMP with -e $turnend -e $watch" \
+    "omp repair line did not name both native wrapper paths"
+  assert_contains "$out" "Pi tool fm_watch_arm_pi" \
+    "omp repair line lost the extension-owned recovery tool"
+  pass "omp supervision renders native extension paths and continuity recovery rules"
+}
+
+
 test_selected_harness_block_only
 test_unknown_fallback
 test_conditional_stanzas
@@ -187,3 +210,4 @@ test_pi_signed_preserves_identity_with_pi_supervision_protocol
 test_grok_is_background_notify
 test_grok_command_sources_effective_config
 test_pi_snippet_uses_effective_extension_path
+test_omp_snippet_uses_native_extensions_and_recovery_protocol

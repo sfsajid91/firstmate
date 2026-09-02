@@ -657,16 +657,25 @@ test_extension_live_watcher_is_healthy_without_ownership_evidence() {
 test_pi_harness_routes_itself_to_the_extension_model() {
   local dir home out pid harness
   local -a pi_env
-  for harness in pi pi-signed; do
-    pi_env=(PI_CODING_AGENT=true)
-    [ "$harness" = pi ] || pi_env+=(FM_PI_HARNESS=pi-signed)
+  for harness in pi pi-signed omp; do
+    case "$harness" in
+      pi)
+        pi_env=(PI_CODING_AGENT=true)
+        ;;
+      pi-signed)
+        pi_env=(PI_CODING_AGENT=true FM_PI_HARNESS=pi-signed)
+        ;;
+      omp)
+        pi_env=(FM_OMP_HARNESS=omp)
+        ;;
+    esac
     dir=$(make_guard_case "harness-routing-$harness")
     home=$(case_home "$dir")
     sleep 60 &
     pid=$!
-    record_pi_extension_session "$dir" "$pid" || fail "could not record the Pi extension session"
+    record_pi_extension_session "$dir" "$pid" || fail "could not record the Pi-family extension session"
     touch "$home/state/.last-watcher-beat"
-    out=$(env -u CLAUDECODE -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GROK_AGENT -u FM_SUPERVISION_MODEL \
+    out=$(env -u CLAUDECODE -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GROK_AGENT -u FM_SUPERVISION_MODEL -u FM_OMP_HARNESS \
       "${pi_env[@]}" \
       FM_ROOT_OVERRIDE="$(case_root "$dir")" \
       FM_HOME="$home" \
@@ -677,7 +686,7 @@ test_pi_harness_routes_itself_to_the_extension_model() {
     [ -z "$out" ] \
       || fail "a $harness primary must route itself to the extension model, got: $out"
   done
-  pass "fm-guard stale banner: Pi and pi-signed primaries route themselves to the extension model"
+  pass "fm-guard stale banner: Pi-family and OMP primaries route themselves to the extension model"
 }
 
 test_first_stale_call_prints_full_banner
