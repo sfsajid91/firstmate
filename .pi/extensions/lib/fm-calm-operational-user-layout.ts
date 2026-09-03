@@ -17,23 +17,23 @@ type AddMessageOptions = {
   populateHistory?: boolean;
 };
 type InteractiveModePresentation = {
-  chatContainer: {
-    children: unknown[];
+  chatContainer?: {
+    children?: unknown[];
     addChild(component: PiUserMessageComponent): void;
   };
-  editor: {
+  editor?: {
     addToHistory?(text: string): void;
   };
-  getMarkdownThemeWithSettings(): UserMessageConstructorArgs[1];
-  getUserMessageText(message: UserMessageLike): string;
-  outputPad: number;
+  getMarkdownThemeWithSettings?(): UserMessageConstructorArgs[1];
+  getUserMessageText?(message: UserMessageLike): string;
+  outputPad?: number;
 };
 type InteractiveModePrototype = {
   addMessageToChat(
     this: InteractiveModePresentation,
     message: UserMessageLike,
     options?: AddMessageOptions,
-  ): void;
+  ): unknown;
 };
 type CalmOperationalUserLayoutPatch = {
   hidesOperationalInput: () => boolean;
@@ -117,28 +117,53 @@ export function installCalmOperationalUserLayout(): void {
   }
 
   prototype.addMessageToChat = function (
+    this: InteractiveModePresentation,
     message: UserMessageLike,
     options?: AddMessageOptions,
-  ): void {
+  ): unknown {
     if (message.role !== "user" || !contentIsTextOnly(message.content)) {
-      originalAddMessageToChat.call(this, message, options);
-      return;
+      return originalAddMessageToChat.call(this, message, options);
     }
 
-    const text = this.getUserMessageText(message);
+    const text =
+      typeof this.getUserMessageText === "function"
+        ? this.getUserMessageText(message)
+        : typeof message.content === "string"
+          ? message.content
+          : Array.isArray(message.content)
+            ? message.content
+                .filter(
+                  (b) =>
+                    b &&
+                    typeof b === "object" &&
+                    (b as { type?: unknown }).type === "text" &&
+                    typeof (b as { text?: unknown }).text === "string",
+                )
+                .map((b) => (b as { text: string }).text)
+                .join("")
+            : undefined;
     if (!text || !patch.isOperationalInput(text)) {
-      originalAddMessageToChat.call(this, message, options);
-      return;
+      return originalAddMessageToChat.call(this, message, options);
     }
+
+    const markdownTheme =
+      typeof this.getMarkdownThemeWithSettings === "function"
+        ? this.getMarkdownThemeWithSettings()
+        : undefined;
+    const outputPad = typeof this.outputPad === "number" ? this.outputPad : 0;
+    const hasLeadingSpacer = Boolean(
+      this.chatContainer?.children && this.chatContainer.children.length > 0,
+    );
 
     const component = new CalmOperationalUserMessageComponent(
       text,
-      this.getMarkdownThemeWithSettings(),
-      this.outputPad,
-      this.chatContainer.children.length > 0,
+      markdownTheme,
+      outputPad,
+      hasLeadingSpacer,
     );
-    this.chatContainer.addChild(component);
-    if (options?.populateHistory) this.editor.addToHistory?.(text);
+    this.chatContainer?.addChild(component);
+    if (options?.populateHistory) this.editor?.addToHistory?.(text);
+    return [component];
   };
 
   registry[CALM_OPERATIONAL_USER_LAYOUT_PATCH] = patch;

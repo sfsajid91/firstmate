@@ -68,11 +68,11 @@ export function installCalmAssistantLayout(): void {
 
   AssistantMessageComponent.prototype.updateContent = function (
     message: AssistantMessage,
+    ...args: unknown[]
   ): void {
     const state = this as unknown as AssistantMessagePresentationState;
     const hideThinking =
-      state.hiddenThinkingLabel === "" &&
-      state.hideThinkingBlock &&
+      (state.hiddenThinkingLabel === "" || state.hideThinkingBlock) &&
       patch.hidesThinking();
     const hideWorkingNote =
       patch.hidesWorkingNote() && isMidTurnAssistantMessage(message);
@@ -88,7 +88,7 @@ export function installCalmAssistantLayout(): void {
           }
         : message;
 
-    originalUpdateContent.call(this, presentationMessage);
+    originalUpdateContent.call(this, presentationMessage, ...args);
     if (presentationMessage !== message) state.lastMessage = message;
   };
 
